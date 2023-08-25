@@ -1,0 +1,22 @@
+# This is a generated file. Not intended for manual editing.
+services:
+  questlyapi:
+    build:
+      context: "C:\\Users\\philo\\RiderProjects\\Questly"
+      dockerfile: "QuestlyApi/Dockerfile"
+      target: "base"
+    command: []
+    entrypoint:
+    - "dotnet"
+    - "/app/bin/Debug/net7.0/QuestlyApi.dll"
+    environment:
+      DOTNET_USE_POLLING_FILE_WATCHER: "true"
+      NUGET_PACKAGES: "C:\\Users\\philo\\.nuget\\packages"
+      NUGET_FALLBACK_PACKAGES: "C:\\Users\\philo\\.nuget\\packages"
+    image: "questlyapi:dev"
+    ports: []
+    volumes:
+    - "C:\\Users\\philo\\.nuget\\packages:/root/.nuget/fallbackpackages"
+    - "C:\\Users\\philo\\RiderProjects\\Questly\\QuestlyApi:/app:rw"
+    - "C:\\Users\\philo\\RiderProjects\\Questly:/src:rw"
+    working_dir: "/app"

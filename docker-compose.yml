@@ -1,0 +1,34 @@
+﻿version: '3.8' # Specifies the version of the Docker Compose file format
+
+services: # Defines the services that make up your application
+
+  questlyapi: # The name of the service for your API
+    image: questlyapi # The name of the image for your API
+    build: # Instructions for building the image
+      context: . # The build context (current directory)
+      dockerfile: QuestlyApi/Dockerfile # Path to the Dockerfile
+    environment: # Environment variables for the API
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=https://+;http://+
+      - ASPNETCORE_HTTPS_PORT=443
+      - ASPNETCORE_Kestrel__Certificates__Default__Password=2099
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
+    ports: # Port mapping between the host and the container
+      - "8000:80"
+      - "8001:443"
+    volumes: # Mounts a volume for HTTPS certificates
+      - ~/.aspnet/https:/https:ro
+
+  db: # The name of the service for PostgreSQL
+    image: postgres:latest # The name of the PostgreSQL image
+    environment: # Environment variables for PostgreSQL
+      POSTGRES_DB: questlydb # Database name
+      POSTGRES_USER: philo # Username
+      POSTGRES_PASSWORD: 2099 # Password
+    ports: # Port mapping for PostgreSQL
+      - "5432:5432"
+    volumes: # Mounts a volume to persist PostgreSQL data
+      - postgres_data:/var/lib/postgresql/data
+
+volumes: # Defines a named volume
+  postgres_data: # The name of the volume for PostgreSQL data
