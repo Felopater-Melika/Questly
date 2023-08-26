@@ -1,0 +1,19 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Google Login</title>
+</head>
+<body>
+
+<h1>Test Google Login</h1>
+
+<button onclick="loginWithGoogle()">Login with Google</button>
+
+<script>
+    function loginWithGoogle() {
+        window.location.href = 'https://localhost:7026/Auth/signin?returnUrl=https://localhost:7026/Auth/GoogleResponse';
+    }
+</script>
+
+</body>
+</html>

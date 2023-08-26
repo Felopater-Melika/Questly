@@ -1,57 +1,88 @@
 using IdentityServer4;
+using IdentityServer4.Models;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using QuestlyApi.Data;
+using Serilog;
+using Serilog.Sinks.SystemConsole.Themes;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+var services = builder.Services;
 
-builder.Services.AddIdentityServer()
-    .AddInMemoryClients(configuration.GetSection("IdentityServer:Clients"))
-    .AddInMemoryIdentityResources(configuration.GetSection("IdentityServer:IdentityResources"))
-    .AddInMemoryApiResources(configuration.GetSection("IdentityServer:ApiResources"))
-    .AddAspNetIdentity<Player>(); // Use real users from the database
+Log.Logger = new LoggerConfiguration().MinimumLevel
+    .Information()
+    .WriteTo.Console(
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
+        theme: AnsiConsoleTheme.Code
+    )
+    .Enrich.FromLogContext()
+    .CreateLogger();
 
-// Add Authentication
-builder.Services.AddAuthentication()
-    .AddGoogle("Google", options =>
-    {
-        options.SignInScheme = IdentityServerConstants.ExternalCookieAuthenticationScheme;
-        options.ClientId = configuration["Authentication:Google:ClientId"] ?? string.Empty;
-        options.ClientSecret = configuration["Authentication:Google:ClientSecret"] ?? string.Empty;
-    });
+builder.Host.UseSerilog();
 
-// Add ASP.NET Core Identity
-builder.Services.AddIdentity<Player, IdentityRole>()
+// Database
+services.AddDbContext<ApplicationDbContext>(
+    options => options.UseNpgsql(configuration.GetConnectionString("DefaultConnection"))
+);
+
+// Identity
+services
+    .AddIdentity<IdentityUser, IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
 
-// Add services to the container.
+// IdentityServer
+services
+    .AddIdentityServer()
+    .AddInMemoryClients(configuration.GetSection("IdentityServer:Clients").Get<List<Client>>())
+    .AddInMemoryIdentityResources(
+        configuration.GetSection("IdentityServer:IdentityResources").Get<List<IdentityResource>>()
+    )
+    .AddInMemoryApiResources(
+        configuration.GetSection("IdentityServer:ApiResources").Get<List<ApiResource>>()
+    )
+    .AddAspNetIdentity<IdentityUser>();
 
-builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// Authentication
+services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = GoogleDefaults.AuthenticationScheme;
+    })
+    .AddCookie()
+    .AddGoogle(
+        "Google",
+        options =>
+        {
+            options.SignInScheme = IdentityServerConstants.ExternalCookieAuthenticationScheme;
+            options.ClientId = configuration["Authentication:Google:ClientId"];
+            options.ClientSecret = configuration["Authentication:Google:ClientSecret"];
+        }
+    );
+
+// Other services
+services.AddControllers();
+services.AddEndpointsApiExplorer();
+services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Middleware
 if (app.Environment.IsDevelopment())
 {
+    app.UseDeveloperExceptionPage();
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
+app.UseSerilogRequestLogging();
+app.UseExceptionHandler("/error");
 app.UseHttpsRedirection();
-
-// Use Middleware
 app.UseIdentityServer();
 app.UseAuthentication();
 app.UseAuthorization();
-
-
 app.MapControllers();
-
 app.Run();
