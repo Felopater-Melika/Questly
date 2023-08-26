@@ -6,10 +6,10 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using QuestlyApi.Data;
 using Serilog;
+using Serilog.Sinks.SystemConsole.Themes;
 
-// Initialize the web application builder and application
+// Initialize the web application builder
 var builder = WebApplication.CreateBuilder(args);
-var app = builder.Build();
 
 // Configure Logger
 ConfigureLogger(builder);
@@ -29,22 +29,32 @@ ConfigureAuthentication(builder);
 // Configure Additional Services
 ConfigureServices(builder);
 
+// Build the application
+var app = builder.Build();
+
 // Configure Middleware
 ConfigureMiddleware(app);
 
 app.Run();
 
+
 // Logger Configuration
 void ConfigureLogger(WebApplicationBuilder loggerBuilder)
 {
     var serilogConfig = new LoggerConfiguration()
-        .ReadFrom.Configuration(loggerBuilder.Configuration) // Read from appsettings.json
+        .MinimumLevel.Information()
+        .WriteTo.Console(
+            outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
+            theme: AnsiConsoleTheme.Code
+        )
+        .Enrich.FromLogContext()
         .CreateLogger();
 
     Log.Logger = serilogConfig;
 
     loggerBuilder.Host.UseSerilog();
 }
+
 
 // Database Configuration
 void ConfigureDatabase(WebApplicationBuilder databaseBuilder)
@@ -103,7 +113,7 @@ void ConfigureAuthentication(WebApplicationBuilder authenticationBuilder)
             "Google",
             options =>
             {
-                options.SignInScheme = IdentityServerConstants.ExternalCookieAuthenticationScheme;
+                options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
                 options.ClientId = clientId;
                 options.ClientSecret = clientSecret;
             }

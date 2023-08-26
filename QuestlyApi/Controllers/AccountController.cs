@@ -9,7 +9,6 @@ namespace QuestlyApi.Controllers;
 // API Controller for Authentication
 [ApiController]
 [Route("[controller]")]
-[Authorize] // Protect all endpoints in this controller
 public class AuthController : ControllerBase
 {
     // Dependency injection for logger
@@ -22,7 +21,6 @@ public class AuthController : ControllerBase
 
     // Endpoint for signing in with Google
     [HttpGet("signin")]
-    [AllowAnonymous] // Allow anonymous access to this endpoint
     public async Task<IActionResult> SignIn()
     {
         try
@@ -32,7 +30,8 @@ public class AuthController : ControllerBase
                 GoogleDefaults.AuthenticationScheme,
                 new AuthenticationProperties { RedirectUri = Url.Action("GoogleResponse") }
             );
-            return Ok();
+            return Challenge(new AuthenticationProperties { RedirectUri = Url.Action("GoogleResponse") },
+                GoogleDefaults.AuthenticationScheme);
         }
         catch (Exception ex)
         {
@@ -44,6 +43,7 @@ public class AuthController : ControllerBase
 
     // Endpoint for signing out
     [HttpGet("signout")]
+    [Authorize]
     public new IActionResult SignOut()
     {
         // Sign the user out and redirect to home
@@ -54,6 +54,7 @@ public class AuthController : ControllerBase
     [HttpGet("GoogleResponse")]
     public async Task<IActionResult> GoogleResponse()
     {
+        _logger.LogInformation("GoogleResponse called");
         try
         {
             // Authenticate the user
