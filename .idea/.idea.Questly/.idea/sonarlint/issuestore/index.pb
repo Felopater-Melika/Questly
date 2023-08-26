@@ -13,3 +13,19 @@ X
 (QuestlyApi.Tests/QuestlyApi.Tests.csproj,2\4\24b34ad00dbdbe74665dea184bb047ca30b5708e
 ;
 Questly.sln,e\1\e1d27bedbde8a77351e3eae5babd07c79abc87a1
+B
+docker-compose.yml,3\5\35b8c13cf2eb2a194eada000eb310d65aed53b2a
+E
+QuestlyApi/Dockerfile,b\c\bce6692c9e7cc71bb09d0c203917b792f5df73c1
+_
+/QuestlyApi/Migrations/20230826041253_initial.cs,2\b\2b2a89d72d298ddd32f7f76005452e717e523e3e
+L
+QuestlyApi/QuestlyApi.csproj,3\7\37dc4514463484eeb1915003bbc6be49a28b6ac4
+h
+8QuestlyApi/Migrations/20230826041253_initial.Designer.cs,6\3\63cb9a5069d2662bc5e20e937d16df7f9e891ff2
+j
+:QuestlyApi/Migrations/ApplicationDbContextModelSnapshot.cs,1\3\13f8431795750034748a7f4465fd7a147437dac7
+D
+QuestlyApi/test.html,c\b\cbe38e04fcbb6e9a4ca312f4933b408254ec7193
+W
+'QuestlyApi/Data/ApplicationDbContext.cs,1\1\118933b5f8d5f120ff30836e1dc1879119b6a17f

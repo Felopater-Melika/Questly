@@ -3,12 +3,16 @@ using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
+
 namespace QuestlyApi.Controllers;
 
+// API Controller for Authentication
 [ApiController]
 [Route("[controller]")]
+[Authorize] // Protect all endpoints in this controller
 public class AuthController : ControllerBase
 {
+    // Dependency injection for logger
     private readonly ILogger<AuthController> _logger;
 
     public AuthController(ILogger<AuthController> logger)
@@ -16,38 +20,61 @@ public class AuthController : ControllerBase
         _logger = logger;
     }
 
+    // Endpoint for signing in with Google
     [HttpGet("signin")]
-    public async Task SignIn()
+    [AllowAnonymous] // Allow anonymous access to this endpoint
+    public async Task<IActionResult> SignIn()
     {
-        await HttpContext.ChallengeAsync(GoogleDefaults.AuthenticationScheme, new AuthenticationProperties()
+        try
         {
-            RedirectUri = Url.Action("GoogleResponse")
-        });
+            // Challenge the user to login via Google
+            await HttpContext.ChallengeAsync(
+                GoogleDefaults.AuthenticationScheme,
+                new AuthenticationProperties { RedirectUri = Url.Action("GoogleResponse") }
+            );
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            // Log any errors that occur during the sign-in process
+            _logger.LogError("An error occurred in SignIn: {ExMessage}", ex.Message);
+            return StatusCode(500, "Internal server error");
+        }
     }
 
+    // Endpoint for signing out
     [HttpGet("signout")]
-    public IActionResult SignOut()
+    public new IActionResult SignOut()
     {
-        return SignOut(new AuthenticationProperties { RedirectUri = "/" }, "Google");
+        // Sign the user out and redirect to home
+        return SignOut(new AuthenticationProperties { RedirectUri = "/" }, GoogleDefaults.AuthenticationScheme);
     }
 
+    // Endpoint for handling Google's response after authentication
     [HttpGet("GoogleResponse")]
     public async Task<IActionResult> GoogleResponse()
     {
-        _logger.LogInformation("Inside SignInGoogle method");
-
-        // Retrieve the user info
-        var authenticateInfo = await HttpContext.AuthenticateAsync("Google");
-        if (authenticateInfo?.Principal == null)
+        try
         {
-            _logger.LogInformation("Could not authenticate user.");
-            return Unauthorized();
+            // Authenticate the user
+            var authenticateInfo = await HttpContext.AuthenticateAsync(GoogleDefaults.AuthenticationScheme);
+
+            // Check if authentication was successful
+            if (authenticateInfo.Principal == null)
+            {
+                _logger.LogInformation("Could not authenticate user");
+                return Unauthorized();
+            }
+
+            // Log successful authentication
+            _logger.LogInformation("Successfully authenticated user");
+            return Ok("Successfully authenticated user.");
         }
-
-        // Log user claims (like email, name, etc.)
-        foreach (var claim in authenticateInfo.Principal.Claims)
-            _logger.LogInformation($"Claim Type: {claim.Type}, Claim Value: {claim.Value}");
-
-        return Ok("Successfully enticated user.");
+        catch (Exception ex)
+        {
+            // Log any errors that occur during the Google response process
+            _logger.LogError("An error occurred in GoogleResponse: {ExMessage}", ex.Message);
+            return StatusCode(500, "Internal server error");
+        }
     }
 }
