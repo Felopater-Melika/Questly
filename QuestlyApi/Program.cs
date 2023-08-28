@@ -1,25 +1,150 @@
+using IdentityServer4;
+using IdentityServer4.Models;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using QuestlyApi.Data;
+using Serilog;
+using Serilog.Sinks.SystemConsole.Themes;
+
+// Initialize the web application builder
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Configure Logger
+ConfigureLogger(builder);
 
-builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// Configure Database
+ConfigureDatabase(builder);
 
+// Configure Identity
+ConfigureIdentity(builder);
+
+// Configure IdentityServer
+ConfigureIdentityServer(builder);
+
+// Configure Authentication
+ConfigureAuthentication(builder);
+
+// Configure Additional Services
+ConfigureServices(builder);
+
+// Build the application
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
-app.UseHttpsRedirection();
-
-app.UseAuthorization();
-
-app.MapControllers();
+// Configure Middleware
+ConfigureMiddleware(app);
 
 app.Run();
+
+
+// Logger Configuration
+void ConfigureLogger(WebApplicationBuilder loggerBuilder)
+{
+    var serilogConfig = new LoggerConfiguration()
+        .MinimumLevel.Information()
+        .WriteTo.Console(
+            outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
+            theme: AnsiConsoleTheme.Code
+        )
+        .Enrich.FromLogContext()
+        .CreateLogger();
+
+    Log.Logger = serilogConfig;
+
+    loggerBuilder.Host.UseSerilog();
+}
+
+
+// Database Configuration
+void ConfigureDatabase(WebApplicationBuilder databaseBuilder)
+{
+    // Setup Entity Framework with PostgreSQL
+    databaseBuilder.Services.AddDbContext<ApplicationDbContext>(
+        options => options.UseNpgsql(databaseBuilder.Configuration.GetConnectionString("DefaultConnection"))
+    );
+}
+
+// Identity Configuration
+void ConfigureIdentity(WebApplicationBuilder identityBuilder)
+{
+    // Setup Identity for user management
+    identityBuilder.Services
+        .AddIdentity<IdentityUser, IdentityRole>()
+        .AddEntityFrameworkStores<ApplicationDbContext>()
+        .AddDefaultTokenProviders();
+}
+
+// IdentityServer Configuration
+void ConfigureIdentityServer(WebApplicationBuilder identityServerBuilder)
+{
+    // Setup IdentityServer4 for OAuth2 and OpenID Connect
+    identityServerBuilder.Services
+        .AddIdentityServer()
+        .AddInMemoryClients(
+            identityServerBuilder.Configuration.GetSection("IdentityServer:Clients").Get<List<Client>>())
+        .AddInMemoryIdentityResources(
+            identityServerBuilder.Configuration.GetSection("IdentityServer:IdentityResources")
+                .Get<List<IdentityResource>>()
+        )
+        .AddInMemoryApiResources(
+            identityServerBuilder.Configuration.GetSection("IdentityServer:ApiResources").Get<List<ApiResource>>()
+        )
+        .AddAspNetIdentity<IdentityUser>();
+}
+
+// Authentication Configuration
+void ConfigureAuthentication(WebApplicationBuilder authenticationBuilder)
+{
+    // Setup Google authentication
+    var clientId = authenticationBuilder.Configuration["Authentication:Google:ClientId"];
+    var clientSecret = authenticationBuilder.Configuration["Authentication:Google:ClientSecret"];
+
+    if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
+        throw new InvalidOperationException("Google authentication settings are missing.");
+
+    authenticationBuilder.Services.AddAuthentication(options =>
+        {
+            options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+            options.DefaultChallengeScheme = GoogleDefaults.AuthenticationScheme;
+        })
+        .AddCookie()
+        .AddGoogle(
+            "Google",
+            options =>
+            {
+                options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+                options.ClientId = clientId;
+                options.ClientSecret = clientSecret;
+            }
+        );
+}
+
+// Additional Services Configuration
+void ConfigureServices(WebApplicationBuilder servicesBuilder)
+{
+    // Setup controllers and Swagger for API documentation
+    servicesBuilder.Services.AddControllers();
+    servicesBuilder.Services.AddEndpointsApiExplorer();
+    servicesBuilder.Services.AddSwaggerGen();
+}
+
+// Middleware Configuration
+void ConfigureMiddleware(WebApplication application)
+{
+    // Setup middleware for development and production environments
+    if (application.Environment.IsDevelopment())
+    {
+        application.UseDeveloperExceptionPage();
+        application.UseSwagger();
+        application.UseSwaggerUI();
+    }
+
+    application.UseSerilogRequestLogging();
+    application.UseExceptionHandler("/error");
+    application.UseHttpsRedirection();
+    application.UseIdentityServer();
+    application.UseAuthentication();
+    application.UseAuthorization();
+    application.MapControllers();
+}
