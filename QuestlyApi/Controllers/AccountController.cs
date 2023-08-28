@@ -1,7 +1,11 @@
-﻿using Microsoft.AspNetCore.Authentication;
+﻿using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using QuestlyApi.Entities;
+using QuestlyApi.Repositories;
+using Swashbuckle.AspNetCore.Annotations;
 
 
 namespace QuestlyApi.Controllers;
@@ -13,14 +17,18 @@ public class AuthController : ControllerBase
 {
     // Dependency injection for logger
     private readonly ILogger<AuthController> _logger;
+    private readonly IPlayerRepository _playerRepository;
 
-    public AuthController(ILogger<AuthController> logger)
+    public AuthController(ILogger<AuthController> logger, IPlayerRepository playerRepository)
     {
+        _playerRepository = playerRepository;
         _logger = logger;
     }
 
-    // Endpoint for signing in with Google
+
     [HttpGet("signin")]
+    [SwaggerOperation(Summary = "Initiates Google sign-in process",
+        Description = "Redirects to Google login or returns 500 if an error occurs.")]
     public async Task<IActionResult> SignIn()
     {
         try
@@ -41,17 +49,18 @@ public class AuthController : ControllerBase
         }
     }
 
-    // Endpoint for signing out
     [HttpGet("signout")]
     [Authorize]
+    [SwaggerOperation(Summary = "Signs the user out and redirects to home")]
     public new IActionResult SignOut()
     {
         // Sign the user out and redirect to home
         return SignOut(new AuthenticationProperties { RedirectUri = "/" }, GoogleDefaults.AuthenticationScheme);
     }
 
-    // Endpoint for handling Google's response after authentication
     [HttpGet("GoogleResponse")]
+    [SwaggerOperation(Summary = "Handles Google's response after authentication",
+        Description = "Returns 200 OK if successful, 401 if unauthorized, 500 if an error occurs.")]
     public async Task<IActionResult> GoogleResponse()
     {
         _logger.LogInformation("GoogleResponse called");
@@ -65,6 +74,34 @@ public class AuthController : ControllerBase
             {
                 _logger.LogInformation("Could not authenticate user");
                 return Unauthorized();
+            }
+
+            // Extract player information
+            var email = authenticateInfo.Principal.FindFirstValue(ClaimTypes.Email);
+            var firstName = authenticateInfo.Principal.FindFirstValue(ClaimTypes.GivenName);
+            var lastName = authenticateInfo.Principal.FindFirstValue(ClaimTypes.Surname);
+
+            // Check if the player already exists
+            var existingPlayer =
+                await _playerRepository.GetByEmailAsync(email); // Assuming you have a method to get a player by email
+
+            if (existingPlayer == null)
+            {
+                // Create a new player
+                var player = new Player()
+                {
+                    Email = email,
+                    FirstName = firstName,
+                    LastName = lastName
+                };
+
+                // Add the player to the database
+                await _playerRepository.AddAsync(player);
+                _logger.LogInformation("New player added");
+            }
+            else
+            {
+                _logger.LogInformation("Player already exists");
             }
 
             // Log successful authentication
