@@ -8,14 +8,18 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Duende.IdentityServer" Version="6.3.3"/>
+        <PackageReference Include="Duende.IdentityServer.AspNetIdentity" Version="6.3.3"/>
+        <PackageReference Include="Duende.IdentityServer.Configuration.EntityFramework" Version="6.3.3"/>
+        <PackageReference Include="Duende.IdentityServer.EntityFramework" Version="6.3.3"/>
         <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0"/>
-        <PackageReference Include="IdentityServer4" Version="4.1.2"/>
-        <PackageReference Include="IdentityServer4.AspNetIdentity" Version="4.1.2"/>
         <PackageReference Include="JetBrains.Annotations" Version="2023.2.0"/>
         <PackageReference Include="MediatR" Version="12.1.1"/>
         <PackageReference Include="MediatR.Extensions.FluentValidation.AspNetCore" Version="4.0.0"/>
         <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="7.0.10"/>
+        <PackageReference Include="Microsoft.AspNetCore.Identity" Version="2.2.0"/>
         <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="7.0.10"/>
+        <PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="7.0.10"/>
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="7.0.10"/>
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="7.0.10">
             <PrivateAssets>all</PrivateAssets>

@@ -1,5 +1,4 @@
-using IdentityServer4;
-using IdentityServer4.Models;
+using Duende.IdentityServer.Models;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Identity;
@@ -22,7 +21,7 @@ ConfigureDatabase(builder);
 // Configure Identity
 ConfigureIdentity(builder);
 
-// Configure IdentityServer
+// Update IdentityServer Configuration
 ConfigureIdentityServer(builder);
 
 // Configure Authentication
@@ -44,7 +43,7 @@ app.Run();
 void ConfigureLogger(WebApplicationBuilder loggerBuilder)
 {
     var serilogConfig = new LoggerConfiguration()
-        .MinimumLevel.Information()
+        .MinimumLevel.Debug()
         .WriteTo.Console(
             outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
             theme: AnsiConsoleTheme.Code
@@ -88,23 +87,36 @@ void ConfigureIdentity(WebApplicationBuilder identityBuilder)
 // IdentityServer Configuration
 void ConfigureIdentityServer(WebApplicationBuilder identityServerBuilder)
 {
-    // Setup IdentityServer4 for OAuth2 and OpenID Connect
+    // Load client configurations from appsettings.json into a List<Client>
+    var clients = identityServerBuilder.Configuration
+        .GetSection("IdentityServer:Clients").Get<List<Client>>();
+
+    // Load identity resources like scopes from appsettings.json into a List<IdentityResource>
+    var identityResources = identityServerBuilder.Configuration
+        .GetSection("IdentityServer:IdentityResources").Get<List<IdentityResource>>();
+
+    // Load API resources from appsettings.json into a List<ApiResource>
+    var apiResources = identityServerBuilder.Configuration
+        .GetSection("IdentityServer:ApiResources").Get<List<ApiResource>>();
+
+    // Check if any of the configurations are null and log a message if they are
+    if (clients == null || identityResources == null || apiResources == null)
+        Console.WriteLine("IdentityServer configuration is missing");
+
+    // Initialize IdentityServer and configure it
     identityServerBuilder.Services
-        .AddIdentityServer() // Initialize IdentityServer4
-        .AddInMemoryClients(
-            // Load client configurations from appsettings.json
-            identityServerBuilder.Configuration.GetSection("IdentityServer:Clients").Get<List<Client>>()
-        )
-        .AddInMemoryIdentityResources(
-            // Load identity resources like scopes from appsettings.json
-            identityServerBuilder.Configuration.GetSection("IdentityServer:IdentityResources")
-                .Get<List<IdentityResource>>()
-        )
-        .AddInMemoryApiResources(
-            // Load API resources from appsettings.json
-            identityServerBuilder.Configuration.GetSection("IdentityServer:ApiResources").Get<List<ApiResource>>()
-        )
-        .AddAspNetIdentity<Player>(); // Integrate ASP.NET Core Identity with IdentityServer4 using the Player entity
+        .AddIdentityServer() // Initialize Duende IdentityServer
+        .AddInMemoryClients(clients!) // Add the client configurations
+        .AddInMemoryIdentityResources(identityResources!) // Add the identity resources
+        .AddInMemoryApiResources(apiResources!) // Add the API resources
+        .AddAspNetIdentity<
+            Player>() // Integrate ASP.NET Core Identity with Duende IdentityServer using the Player entity
+        .AddOperationalStore(options =>
+        {
+            options.ConfigureDbContext = builder => builder.UseNpgsql(
+                identityServerBuilder.Configuration.GetConnectionString("DefaultConnection"),
+                sql => sql.MigrationsAssembly("QuestlyApi")); // Replace with your assembly name
+        });
 }
 
 

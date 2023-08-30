@@ -11,7 +11,17 @@
 
 <script>
     function loginWithGoogle() {
-        window.location.href = 'https://localhost:7026/Auth/signin?returnUrl=https://localhost:7026/Auth/GoogleResponse';
+        // Redirect to your server to initiate Google login
+        window.location.href = 'https://localhost:7026/Auth/signin';
+    }
+
+    // Check if there's a token in the URL (this is just an example, your token might be sent in a different way)
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+
+    if (token) {
+        // Store the token
+        localStorage.setItem('auth_token', token);
     }
 </script>
 
