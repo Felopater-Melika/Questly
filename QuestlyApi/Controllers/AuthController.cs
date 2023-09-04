@@ -2,10 +2,6 @@
 using System.Security.Authentication;
 using System.Security.Claims;
 using System.Text;
-using Duende.IdentityServer.Models;
-using Duende.IdentityServer.Services;
-using Duende.IdentityServer.Stores;
-using Duende.IdentityServer.Validation;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
@@ -13,9 +9,11 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using QuestlyApi.Dtos;
 using QuestlyApi.Entities;
 using QuestlyApi.Repositories;
 using Swashbuckle.AspNetCore.Annotations;
+using JwtRegisteredClaimNames = Microsoft.IdentityModel.JsonWebTokens.JwtRegisteredClaimNames;
 
 
 namespace QuestlyApi.Controllers;
@@ -28,31 +26,24 @@ public class AuthController : ControllerBase
     // Dependency injection for logger
     private readonly ILogger<AuthController> _logger;
     private readonly IPlayerRepository _playerRepository;
-    private readonly ITokenService _tokenService;
-    private readonly IRefreshTokenService _refreshTokenService;
-    private readonly IPersistedGrantStore _persistedGrantStore;
-    private readonly IUserClaimsPrincipalFactory<Player> _claimsFactory;
+    private readonly IConfiguration _configuration;
+
 
     public AuthController(
+        IConfiguration configuration,
         ILogger<AuthController> logger,
-        IPlayerRepository playerRepository,
-        ITokenService tokenService,
-        IRefreshTokenService refreshTokenService,
-        IPersistedGrantStore persistedGrantStore,
-        IUserClaimsPrincipalFactory<Player> claimsFactory)
+        IPlayerRepository playerRepository
+    )
     {
+        _configuration = configuration;
         _logger = logger;
         _playerRepository = playerRepository;
-        _tokenService = tokenService;
-        _refreshTokenService = refreshTokenService;
-        _persistedGrantStore = persistedGrantStore;
-        _claimsFactory = claimsFactory;
     }
 
 
     [HttpGet("signin")]
     [SwaggerOperation(Summary = "Initiates Google sign-in process",
-        Description = "Redirects to Google login or returns 500 if an error occurs.")]
+        Description = "Redirects to Google's sign-in page and returns 401 if unauthorized, 500 if an error occurs.")]
     public async Task<IActionResult> SignIn()
     {
         _logger.LogInformation("SignIn called");
@@ -109,11 +100,12 @@ public class AuthController : ControllerBase
         _logger.LogInformation("GoogleResponse called");
         try
         {
+            var jwtSettings = _configuration.GetSection("JwtSettings");
+
             _logger.LogDebug("Attempting to authenticate user via Google");
 
             // Authenticate the user
             var authenticateInfo = await HttpContext.AuthenticateAsync(GoogleDefaults.AuthenticationScheme);
-
             // Check if authentication was successful
             if (authenticateInfo.Principal == null)
             {
@@ -156,9 +148,28 @@ public class AuthController : ControllerBase
                 _logger.LogDebug("Player already exists with email: {Email}", email);
             }
 
+            // Create JWT token
+            var claims = new[]
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, email),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            };
+
+            // Generate JWT token
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            var token = new JwtSecurityToken(
+                jwtSettings["Issuer"],
+                jwtSettings["Audience"],
+                claims,
+                expires: DateTime.Now.AddMinutes(30),
+                signingCredentials: creds);
+
+            var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+
             // Log successful authentication
             _logger.LogInformation("Successfully authenticated user: {Email}", email);
-            return Ok("Successfully authenticated");
+            return Ok(new { Token = tokenString });
         }
         catch (InvalidOperationException invalidOpEx)
         {
@@ -180,57 +191,136 @@ public class AuthController : ControllerBase
         }
     }
 
-    [HttpPost("RefreshToken")]
-    public async Task<IActionResult> RefreshToken(string refreshToken)
+    [HttpPost("login")]
+    [SwaggerOperation(Summary = "Logs the user in using JWT",
+        Description = "Returns 200 OK if successful, 401 if unauthorized, 500 if an error occurs.")]
+    public async Task<IActionResult> Login(LoginDto dto)
     {
-        var persistedGrant = await _persistedGrantStore.GetAsync(refreshToken);
-        if (persistedGrant == null)
+        try
         {
-            _logger.LogWarning("Invalid refresh token");
-            return BadRequest("Invalid refresh token");
+            // Log the login attempt
+            _logger.LogInformation("Login attempt for {Email}", dto.Email);
+
+            // Fetch JWT settings from configuration
+            var jwtSettings = _configuration.GetSection("JwtSettings");
+
+            // Retrieve the user by email
+            var user = await _playerRepository.GetByEmailAsync(dto.Email);
+
+            // Check if the email exists in the database
+            if (user == null)
+            {
+                _logger.LogWarning("Invalid email for {Email}", dto.Email);
+                return Unauthorized("Invalid email or password");
+            }
+
+            // Initialize password hasher and verify the provided password
+            var passwordHasher = new PasswordHasher<Player>();
+            var verificationResult = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, dto.Password);
+
+            // Check if the password is valid
+            if (verificationResult != PasswordVerificationResult.Success)
+            {
+                _logger.LogWarning("Invalid password for {Email}", dto.Email);
+                return Unauthorized("Invalid email or password");
+            }
+
+            // Define the claims for the JWT
+            var claims = new[]
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+                new Claim(JwtRegisteredClaimNames.Email, user.Email)
+                // Add more claims as needed
+            };
+
+            // Initialize JWT signing credentials
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+            // Generate the JWT token
+            var token = new JwtSecurityToken(
+                jwtSettings["Issuer"],
+                jwtSettings["Audience"],
+                claims,
+                expires: DateTime.Now.AddMinutes(30),
+                signingCredentials: creds);
+
+            // Return the generated token
+            return Ok(new { Token = new JwtSecurityTokenHandler().WriteToken(token) });
         }
-
-        // Get the user
-        var user = await _playerRepository.GetByIdAsync(Guid.Parse(persistedGrant.SubjectId));
-        if (user == null)
+        catch (InvalidOperationException invalidOpEx)
         {
-            _logger.LogWarning("User not found");
-            return BadRequest("User not found");
+            // Log and handle invalid operations
+            _logger.LogError(invalidOpEx, "Invalid operation for {Email}", dto.Email);
+            return BadRequest("Invalid request");
         }
-
-        // Generate claims
-        var principal = new ClaimsPrincipal(await _claimsFactory.CreateAsync(user));
-
-        // Create new access token
-        var tokenCreateRequest = new TokenCreationRequest
+        catch (DbUpdateException dbEx)
         {
-            Subject = principal
-        };
-        var newAccessToken = await _tokenService.CreateAccessTokenAsync(tokenCreateRequest);
-        var newTokenValue = await _tokenService.CreateSecurityTokenAsync(newAccessToken);
-
-        // Create new refresh token
-        var newRefreshToken = new PersistedGrant
+            // Log and handle database errors
+            _logger.LogError(dbEx, "Database update failed for {Email}", dto.Email);
+            return StatusCode(500, "Database error");
+        }
+        catch (Exception ex)
         {
-            Key = Guid.NewGuid().ToString(), // Generate a new unique key
-            Type = "refresh_token",
-            SubjectId = user.Id.ToString(),
-            ClientId = persistedGrant.ClientId, // Reuse the ClientId from the old token
-            CreationTime = DateTime.UtcNow,
-            Expiration = DateTime.UtcNow.AddMinutes(60), // Set your desired expiration time
-            Data = newAccessToken.ToString() // Serialize the new access token into the Data field
-        };
+            // Log and handle any other exceptions
+            _logger.LogError(ex, "An unexpected error occurred for {Email}", dto.Email);
+            return StatusCode(500, "Internal server error");
+        }
+    }
 
-        // Store the new refresh token
-        await _persistedGrantStore.StoreAsync(newRefreshToken);
 
-        // Remove old refresh token
-        await _persistedGrantStore.RemoveAsync(refreshToken);
-
-        return Ok(new
+    [HttpPost("signup")]
+    [SwaggerOperation(Summary = "Registers a new user",
+        Description = "Returns 201 Created if successful, 400 if validation fails, 500 if an error occurs.")]
+    public async Task<IActionResult> SignUp(SignUpDto dto)
+    {
+        try
         {
-            AccessToken = newTokenValue,
-            RefreshToken = newRefreshToken.Key // Return the new refresh token key
-        });
+            _logger.LogInformation("SignUp attempt for {Email}", dto.Email);
+
+
+            // Check if a user with the same email already exists
+            var existingUser = await _playerRepository.GetByEmailAsync(dto.Email);
+            if (existingUser != null)
+            {
+                _logger.LogWarning("Email already in use for {Email}", dto.Email);
+                return BadRequest("Email already in use");
+            }
+
+            // Hash the password
+            var passwordHasher = new PasswordHasher<Player>();
+            var hashedPassword = passwordHasher.HashPassword(null, dto.Password);
+
+            // Create a new Player entity and set its properties
+            var newPlayer = new Player
+            {
+                Email = dto.Email,
+                PasswordHash = hashedPassword
+            };
+
+            // Add the new player to the database
+            await _playerRepository.AddAsync(newPlayer);
+
+            // Log successful registration
+            _logger.LogInformation("Successfully registered user: {Email}", dto.Email);
+
+            // Return a 201 Created response
+            return CreatedAtAction(nameof(SignUp), new { id = newPlayer.Id }, newPlayer);
+        }
+        catch (InvalidOperationException invalidOpEx)
+        {
+            _logger.LogError(invalidOpEx, "Invalid operation for {Email}", dto.Email);
+            return BadRequest("Invalid request");
+        }
+        catch (DbUpdateException dbEx)
+        {
+            _logger.LogError(dbEx, "Database update failed for {Email}", dto.Email);
+            return StatusCode(500, "Database error");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "An unexpected error occurred for {Email}", dto.Email);
+            return StatusCode(500, "Internal server error");
+        }
     }
 }
