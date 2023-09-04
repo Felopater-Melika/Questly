@@ -15,10 +15,10 @@ public class PlayerRepository : IPlayerRepository
 
     public async Task<Player> GetByIdAsync(Guid id)
     {
-        return await _context.Players.FindAsync(id);
+        return await _context.Players.FindAsync(id) ?? throw new InvalidOperationException();
     }
 
-    public async Task<Player> GetByEmailAsync(string email)
+    public async Task<Player?> GetByEmailAsync(string email)
     {
         return await _context.Players.FirstOrDefaultAsync(p => p.Email == email);
     }
@@ -43,10 +43,7 @@ public class PlayerRepository : IPlayerRepository
     public async Task DeleteAsync(Guid id)
     {
         var player = await GetByIdAsync(id);
-        if (player != null)
-        {
-            _context.Players.Remove(player);
-            await _context.SaveChangesAsync();
-        }
+        _context.Players.Remove(player);
+        await _context.SaveChangesAsync();
     }
 }

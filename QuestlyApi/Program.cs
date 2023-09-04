@@ -1,11 +1,14 @@
-using Duende.IdentityServer.Models;
-using Microsoft.AspNetCore.Authentication.Cookies;
+using System.Text;
+using FluentValidation;
+using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using QuestlyApi.Data;
 using QuestlyApi.Entities;
 using QuestlyApi.Repositories;
+using QuestlyApi.Validators;
 using Serilog;
 using Serilog.Sinks.SystemConsole.Themes;
 
@@ -21,9 +24,6 @@ ConfigureDatabase(builder);
 // Configure Identity
 ConfigureIdentity(builder);
 
-// Update IdentityServer Configuration
-ConfigureIdentityServer(builder);
-
 // Configure Authentication
 ConfigureAuthentication(builder);
 
@@ -38,12 +38,11 @@ ConfigureMiddleware(app);
 
 app.Run();
 
-
 // Logger Configuration
 void ConfigureLogger(WebApplicationBuilder loggerBuilder)
 {
-    var serilogConfig = new LoggerConfiguration()
-        .MinimumLevel.Debug()
+    var serilogConfig = new LoggerConfiguration().MinimumLevel
+        .Information()
         .WriteTo.Console(
             outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
             theme: AnsiConsoleTheme.Code
@@ -56,23 +55,18 @@ void ConfigureLogger(WebApplicationBuilder loggerBuilder)
     loggerBuilder.Host.UseSerilog();
 }
 
-
 // Database Configuration
-
 void ConfigureDatabase(WebApplicationBuilder databaseBuilder)
 {
     // Setup Entity Framework with PostgreSQL
-    databaseBuilder.Services.AddDbContext<ApplicationDbContext>(
-        options =>
-        {
-            options.UseNpgsql(
-                databaseBuilder.Configuration.GetConnectionString("DefaultConnection"),
-                o => o.UseNodaTime() // Enable NodaTime support
-            );
-        }
-    );
+    databaseBuilder.Services.AddDbContext<ApplicationDbContext>(options =>
+    {
+        options.UseNpgsql(
+            databaseBuilder.Configuration.GetConnectionString("DefaultConnection"),
+            o => o.UseNodaTime() // Enable NodaTime support
+        );
+    });
 }
-
 
 // Identity Configuration
 void ConfigureIdentity(WebApplicationBuilder identityBuilder)
@@ -83,42 +77,6 @@ void ConfigureIdentity(WebApplicationBuilder identityBuilder)
         .AddEntityFrameworkStores<ApplicationDbContext>() // Use ApplicationDbContext for storing user data
         .AddDefaultTokenProviders(); // Add default token providers for things like email confirmation, password reset, etc.
 }
-
-// IdentityServer Configuration
-void ConfigureIdentityServer(WebApplicationBuilder identityServerBuilder)
-{
-    // Load client configurations from appsettings.json into a List<Client>
-    var clients = identityServerBuilder.Configuration
-        .GetSection("IdentityServer:Clients").Get<List<Client>>();
-
-    // Load identity resources like scopes from appsettings.json into a List<IdentityResource>
-    var identityResources = identityServerBuilder.Configuration
-        .GetSection("IdentityServer:IdentityResources").Get<List<IdentityResource>>();
-
-    // Load API resources from appsettings.json into a List<ApiResource>
-    var apiResources = identityServerBuilder.Configuration
-        .GetSection("IdentityServer:ApiResources").Get<List<ApiResource>>();
-
-    // Check if any of the configurations are null and log a message if they are
-    if (clients == null || identityResources == null || apiResources == null)
-        Console.WriteLine("IdentityServer configuration is missing");
-
-    // Initialize IdentityServer and configure it
-    identityServerBuilder.Services
-        .AddIdentityServer() // Initialize Duende IdentityServer
-        .AddInMemoryClients(clients!) // Add the client configurations
-        .AddInMemoryIdentityResources(identityResources!) // Add the identity resources
-        .AddInMemoryApiResources(apiResources!) // Add the API resources
-        .AddAspNetIdentity<
-            Player>() // Integrate ASP.NET Core Identity with Duende IdentityServer using the Player entity
-        .AddOperationalStore(options =>
-        {
-            options.ConfigureDbContext = builder => builder.UseNpgsql(
-                identityServerBuilder.Configuration.GetConnectionString("DefaultConnection"),
-                sql => sql.MigrationsAssembly("QuestlyApi")); // Replace with your assembly name
-        });
-}
-
 
 // Authentication Configuration
 void ConfigureAuthentication(WebApplicationBuilder authenticationBuilder)
@@ -132,10 +90,12 @@ void ConfigureAuthentication(WebApplicationBuilder authenticationBuilder)
         throw new InvalidOperationException("Google authentication settings are missing.");
 
     // Configure authentication services
-    authenticationBuilder.Services.AddAuthentication(options =>
+    var jwtSettings = authenticationBuilder.Configuration.GetSection("JwtSettings");
+    authenticationBuilder.Services
+        .AddAuthentication(options =>
         {
             // Set the default scheme to cookies
-            options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+            options.DefaultScheme = IdentityConstants.ApplicationScheme;
             // Set the challenge scheme to Google
             options.DefaultChallengeScheme = GoogleDefaults.AuthenticationScheme;
         })
@@ -145,14 +105,29 @@ void ConfigureAuthentication(WebApplicationBuilder authenticationBuilder)
             options =>
             {
                 // Set the sign-in scheme to cookies
-                options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+                options.SignInScheme = IdentityConstants.ApplicationScheme;
                 // Set the Google API client ID and secret
                 options.ClientId = clientId;
                 options.ClientSecret = clientSecret;
             }
-        );
+        )
+        .AddJwtBearer(options =>
+        {
+            options.TokenValidationParameters = new TokenValidationParameters()
+            {
+                ValidateIssuer = false,
+                ValidateAudience = false,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer = jwtSettings["Issuer"],
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(
+                        jwtSettings["Key"] ?? throw new InvalidOperationException()
+                    )
+                )
+            };
+        });
 }
-
 
 // Additional Services Configuration
 void ConfigureServices(WebApplicationBuilder servicesBuilder)
@@ -165,8 +140,15 @@ void ConfigureServices(WebApplicationBuilder servicesBuilder)
     servicesBuilder.Services.AddEndpointsApiExplorer();
     // Add Swagger generator
     servicesBuilder.Services.AddSwaggerGen();
+    // Add AutoMapper
+    servicesBuilder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
+    // Add FluentValidation
+    servicesBuilder.Services
+        .AddFluentValidationAutoValidation()
+        .AddFluentValidationClientsideAdapters()
+        .AddValidatorsFromAssemblyContaining<LoginDtoValidator>()
+        .AddValidatorsFromAssemblyContaining<SignUpDtoValidator>();
 }
-
 
 // Middleware Configuration
 void ConfigureMiddleware(WebApplication application)
@@ -187,8 +169,6 @@ void ConfigureMiddleware(WebApplication application)
     application.UseExceptionHandler("/error");
     // Redirect HTTP to HTTPS
     application.UseHttpsRedirection();
-    // Use IdentityServer for OAuth2 and OpenID Connect
-    application.UseIdentityServer();
     // Use authentication middleware
     application.UseAuthentication();
     // Use authorization middleware

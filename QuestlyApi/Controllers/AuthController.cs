@@ -13,8 +13,6 @@ using QuestlyApi.Dtos;
 using QuestlyApi.Entities;
 using QuestlyApi.Repositories;
 using Swashbuckle.AspNetCore.Annotations;
-using JwtRegisteredClaimNames = Microsoft.IdentityModel.JsonWebTokens.JwtRegisteredClaimNames;
-
 
 namespace QuestlyApi.Controllers;
 
@@ -28,7 +26,6 @@ public class AuthController : ControllerBase
     private readonly IPlayerRepository _playerRepository;
     private readonly IConfiguration _configuration;
 
-
     public AuthController(
         IConfiguration configuration,
         ILogger<AuthController> logger,
@@ -40,10 +37,11 @@ public class AuthController : ControllerBase
         _playerRepository = playerRepository;
     }
 
-
     [HttpGet("signin")]
-    [SwaggerOperation(Summary = "Initiates Google sign-in process",
-        Description = "Redirects to Google's sign-in page and returns 401 if unauthorized, 500 if an error occurs.")]
+    [SwaggerOperation(
+        Summary = "Initiates Google sign-in process",
+        Description = "Redirects to Google's sign-in page and returns 401 if unauthorized, 500 if an error occurs."
+    )]
     public async Task<IActionResult> SignIn()
     {
         _logger.LogInformation("SignIn called");
@@ -60,8 +58,10 @@ public class AuthController : ControllerBase
 
             _logger.LogDebug("Google sign-in challenge initiated successfully");
 
-            return Challenge(new AuthenticationProperties { RedirectUri = Url.Action("GoogleResponse") },
-                GoogleDefaults.AuthenticationScheme);
+            return Challenge(
+                new AuthenticationProperties { RedirectUri = Url.Action("GoogleResponse") },
+                GoogleDefaults.AuthenticationScheme
+            );
         }
         catch (AuthenticationException authEx)
         {
@@ -89,12 +89,17 @@ public class AuthController : ControllerBase
     public new IActionResult SignOut()
     {
         // Sign the user out and redirect to home
-        return SignOut(new AuthenticationProperties { RedirectUri = "/" }, GoogleDefaults.AuthenticationScheme);
+        return SignOut(
+            new AuthenticationProperties { RedirectUri = "/" },
+            GoogleDefaults.AuthenticationScheme
+        );
     }
 
     [HttpGet("GoogleResponse")]
-    [SwaggerOperation(Summary = "Handles Google's response after authentication",
-        Description = "Returns 200 OK if successful, 401 if unauthorized, 500 if an error occurs.")]
+    [SwaggerOperation(
+        Summary = "Handles Google's response after authentication",
+        Description = "Returns 200 OK if successful, 401 if unauthorized, 500 if an error occurs."
+    )]
     public async Task<IActionResult> GoogleResponse()
     {
         _logger.LogInformation("GoogleResponse called");
@@ -105,7 +110,9 @@ public class AuthController : ControllerBase
             _logger.LogDebug("Attempting to authenticate user via Google");
 
             // Authenticate the user
-            var authenticateInfo = await HttpContext.AuthenticateAsync(GoogleDefaults.AuthenticationScheme);
+            var authenticateInfo = await HttpContext.AuthenticateAsync(
+                GoogleDefaults.AuthenticationScheme
+            );
             // Check if authentication was successful
             if (authenticateInfo.Principal == null)
             {
@@ -120,14 +127,18 @@ public class AuthController : ControllerBase
             var firstName = authenticateInfo.Principal.FindFirstValue(ClaimTypes.GivenName);
             var lastName = authenticateInfo.Principal.FindFirstValue(ClaimTypes.Surname);
 
-            _logger.LogDebug("Extracted player information: Email={Email}, FirstName={FirstName}, LastName={LastName}",
-                email, firstName, lastName);
+            _logger.LogDebug(
+                "Extracted player information: Email={Email}, FirstName={FirstName}, LastName={LastName}",
+                email,
+                firstName,
+                lastName
+            );
 
             // Check if the player already exists
             _logger.LogDebug("Checking if player already exists in database");
-            var existingPlayer =
-                await _playerRepository.GetByEmailAsync(email ??
-                                                        throw new InvalidOperationException("Email not found"));
+            var existingPlayer = await _playerRepository.GetByEmailAsync(
+                email ?? throw new InvalidOperationException("Email not found")
+            );
 
             if (existingPlayer == null)
             {
@@ -163,7 +174,8 @@ public class AuthController : ControllerBase
                 jwtSettings["Audience"],
                 claims,
                 expires: DateTime.Now.AddMinutes(30),
-                signingCredentials: creds);
+                signingCredentials: creds
+            );
 
             var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
 
@@ -192,8 +204,10 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
-    [SwaggerOperation(Summary = "Logs the user in using JWT",
-        Description = "Returns 200 OK if successful, 401 if unauthorized, 500 if an error occurs.")]
+    [SwaggerOperation(
+        Summary = "Logs the user in using JWT",
+        Description = "Returns 200 OK if successful, 401 if unauthorized, 500 if an error occurs."
+    )]
     public async Task<IActionResult> Login(LoginDto dto)
     {
         try
@@ -216,7 +230,11 @@ public class AuthController : ControllerBase
 
             // Initialize password hasher and verify the provided password
             var passwordHasher = new PasswordHasher<Player>();
-            var verificationResult = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, dto.Password);
+            var verificationResult = passwordHasher.VerifyHashedPassword(
+                user,
+                user.PasswordHash,
+                dto.Password
+            );
 
             // Check if the password is valid
             if (verificationResult != PasswordVerificationResult.Success)
@@ -243,7 +261,8 @@ public class AuthController : ControllerBase
                 jwtSettings["Audience"],
                 claims,
                 expires: DateTime.Now.AddMinutes(30),
-                signingCredentials: creds);
+                signingCredentials: creds
+            );
 
             // Return the generated token
             return Ok(new { Token = new JwtSecurityTokenHandler().WriteToken(token) });
@@ -268,16 +287,16 @@ public class AuthController : ControllerBase
         }
     }
 
-
     [HttpPost("signup")]
-    [SwaggerOperation(Summary = "Registers a new user",
-        Description = "Returns 201 Created if successful, 400 if validation fails, 500 if an error occurs.")]
+    [SwaggerOperation(
+        Summary = "Registers a new user",
+        Description = "Returns 201 Created if successful, 400 if validation fails, 500 if an error occurs."
+    )]
     public async Task<IActionResult> SignUp(SignUpDto dto)
     {
         try
         {
             _logger.LogInformation("SignUp attempt for {Email}", dto.Email);
-
 
             // Check if a user with the same email already exists
             var existingUser = await _playerRepository.GetByEmailAsync(dto.Email);
@@ -292,11 +311,7 @@ public class AuthController : ControllerBase
             var hashedPassword = passwordHasher.HashPassword(null, dto.Password);
 
             // Create a new Player entity and set its properties
-            var newPlayer = new Player
-            {
-                Email = dto.Email,
-                PasswordHash = hashedPassword
-            };
+            var newPlayer = new Player { Email = dto.Email, PasswordHash = hashedPassword };
 
             // Add the new player to the database
             await _playerRepository.AddAsync(newPlayer);
