@@ -11,4 +11,5 @@ public class ApplicationDbContext : DbContext
     }
 
     public DbSet<Player> Players { get; set; }
+    public DbSet<RefreshToken> RefreshTokens { get; set; }
 }

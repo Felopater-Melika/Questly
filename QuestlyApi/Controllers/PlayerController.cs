@@ -9,9 +9,12 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using QuestlyApi.Data;
 using QuestlyApi.Dtos;
 using QuestlyApi.Entities;
 using QuestlyApi.Repositories;
+using QuestlyApi.Services;
+using QuestlyApi.Utils;
 using Swashbuckle.AspNetCore.Annotations;
 
 namespace QuestlyApi.Controllers;
@@ -19,22 +22,31 @@ namespace QuestlyApi.Controllers;
 // API Controller for Authentication
 [ApiController]
 [Route("[controller]")]
-public class AuthController : ControllerBase
+public class PlayerController : ControllerBase
 {
     // Dependency injection for logger
-    private readonly ILogger<AuthController> _logger;
+    private readonly ILogger<PlayerController> _logger;
+    private readonly ApplicationDbContext _context;
     private readonly IPlayerRepository _playerRepository;
     private readonly IConfiguration _configuration;
+    private readonly IJwtUtils _jwtUtils;
+    private readonly IPlayerService _playerService;
 
-    public AuthController(
+    public PlayerController(
+        ApplicationDbContext context,
         IConfiguration configuration,
-        ILogger<AuthController> logger,
-        IPlayerRepository playerRepository
+        ILogger<PlayerController> logger,
+        IPlayerRepository playerRepository,
+        IJwtUtils jwtUtils,
+        IPlayerService playerService
     )
     {
+        _context = context;
         _configuration = configuration;
         _logger = logger;
         _playerRepository = playerRepository;
+        _jwtUtils = jwtUtils;
+        _playerService = playerService;
     }
 
     [HttpGet("signin")]
@@ -84,7 +96,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpGet("signout")]
-    [Authorize]
+    [Attributes.Authorize]
     [SwaggerOperation(Summary = "Signs the user out and redirects to home")]
     public new IActionResult SignOut()
     {
@@ -140,10 +152,12 @@ public class AuthController : ControllerBase
                 email ?? throw new InvalidOperationException("Email not found")
             );
 
+            Player player;
+
             if (existingPlayer == null)
             {
                 // Create a new player
-                var player = new Player()
+                player = new Player()
                 {
                     Email = email,
                     FirstName = firstName,
@@ -156,32 +170,58 @@ public class AuthController : ControllerBase
             }
             else
             {
+                player = existingPlayer;
                 _logger.LogDebug("Player already exists with email: {Email}", email);
             }
 
-            // Create JWT token
-            var claims = new[]
-            {
-                new Claim(JwtRegisteredClaimNames.Sub, email),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-            };
+            // // Create JWT token
+            // var claims = new[]
+            // {
+            //     new Claim(JwtRegisteredClaimNames.Sub, email),
+            //     new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            // };
+            //
+            // // Generate JWT token
+            // var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]));
+            // var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            // var token = new JwtSecurityToken(
+            //     jwtSettings["Issuer"],
+            //     jwtSettings["Audience"],
+            //     claims,
+            //     expires: DateTime.Now.AddMinutes(30),
+            //     signingCredentials: creds
+            // );
+            //
+            // var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
 
-            // Generate JWT token
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]));
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-            var token = new JwtSecurityToken(
-                jwtSettings["Issuer"],
-                jwtSettings["Audience"],
-                claims,
-                expires: DateTime.Now.AddMinutes(30),
-                signingCredentials: creds
+            var tokenString = _jwtUtils.GenerateJwtToken(player);
+            var tokenValidate = _jwtUtils.ValidateJwtToken(tokenString);
+            var refreshToken = _jwtUtils.GenerateRefreshToken(
+                HttpContext.Connection.RemoteIpAddress.ToString()
             );
 
-            var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+            if (player.RefreshTokens == null)
+                player.RefreshTokens = new List<RefreshToken>();
+            player.RefreshTokens.Add(refreshToken);
+            _context.Update(player);
+            _context.SaveChanges();
+            _logger.LogInformation(player.RefreshTokens.First().Token);
 
+            var newToken = _playerService.RefreshToken(
+                refreshToken.Token,
+                HttpContext.Connection.RemoteIpAddress.ToString()
+            );
             // Log successful authentication
             _logger.LogInformation("Successfully authenticated user: {Email}", email);
-            return Ok(new { Token = tokenString });
+            return Ok(
+                new
+                {
+                    Token = tokenString,
+                    Validation = tokenValidate,
+                    RefreshToken = refreshToken,
+                    NewToken = newToken
+                }
+            );
         }
         catch (InvalidOperationException invalidOpEx)
         {

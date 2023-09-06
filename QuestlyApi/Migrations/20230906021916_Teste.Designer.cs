@@ -13,8 +13,8 @@ using QuestlyApi.Data;
 namespace QuestlyApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20230904035132_Fix32")]
-    partial class Fix32
+    [Migration("20230906021916_Teste")]
+    partial class Teste
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -89,53 +89,56 @@ namespace QuestlyApi.Migrations
 
             modelBuilder.Entity("QuestlyApi.Entities.RefreshToken", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("integer");
 
-                    b.Property<DateTime>("CreationDate")
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("Created")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("ExpiryDate")
+                    b.Property<string>("CreatedByIp")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("Expires")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsRevoked")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsUsed")
-                        .HasColumnType("boolean");
 
                     b.Property<string>("PlayerId")
-                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReasonRevoked")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReplacedByToken")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("Revoked")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RevokedByIp")
                         .HasColumnType("text");
 
                     b.Property<string>("Token")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PlayerId")
-                        .IsUnique();
+                    b.HasIndex("PlayerId");
 
                     b.ToTable("RefreshTokens");
                 });
 
             modelBuilder.Entity("QuestlyApi.Entities.RefreshToken", b =>
                 {
-                    b.HasOne("QuestlyApi.Entities.Player", "Player")
-                        .WithOne("RefreshToken")
-                        .HasForeignKey("QuestlyApi.Entities.RefreshToken", "PlayerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Player");
+                    b.HasOne("QuestlyApi.Entities.Player", null)
+                        .WithMany("RefreshTokens")
+                        .HasForeignKey("PlayerId");
                 });
 
             modelBuilder.Entity("QuestlyApi.Entities.Player", b =>
                 {
-                    b.Navigation("RefreshToken")
-                        .IsRequired();
+                    b.Navigation("RefreshTokens");
                 });
 #pragma warning restore 612, 618
         }

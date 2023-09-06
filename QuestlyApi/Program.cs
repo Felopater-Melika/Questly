@@ -8,6 +8,8 @@ using Microsoft.IdentityModel.Tokens;
 using QuestlyApi.Data;
 using QuestlyApi.Entities;
 using QuestlyApi.Repositories;
+using QuestlyApi.Services;
+using QuestlyApi.Utils;
 using QuestlyApi.Validators;
 using Serilog;
 using Serilog.Sinks.SystemConsole.Themes;
@@ -134,6 +136,10 @@ void ConfigureServices(WebApplicationBuilder servicesBuilder)
 {
     //Add Player Repository
     servicesBuilder.Services.AddScoped<IPlayerRepository, PlayerRepository>();
+    // Add JWT utils
+    servicesBuilder.Services.AddScoped<IJwtUtils, JwtUtils>();
+    // Add Player Service
+    servicesBuilder.Services.AddScoped<IPlayerService, PlayerService>();
     // Add controllers for MVC
     servicesBuilder.Services.AddControllers();
     // Add API explorer for generating Swagger documentation
